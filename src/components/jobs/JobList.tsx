@@ -137,7 +137,7 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
             {filteredJobs.length} vaga{filteredJobs.length !== 1 && "s"}{" "}
             encontrada{filteredJobs.length !== 1 && "s"}
           </p>
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 gap-4 w-full">
             {filteredJobs.map((job) => (
               <JobCard
                 key={job.id}

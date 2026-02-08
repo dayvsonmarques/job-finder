@@ -29,7 +29,7 @@ export function JobCard({
   const tags = job.tags?.split(", ").filter(Boolean) || [];
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+    <div className="w-full bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow overflow-hidden">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-gray-900 truncate">
@@ -93,7 +93,7 @@ export function JobCard({
         </div>
       </div>
 
-      <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+      <p className="mt-3 text-sm text-gray-600 line-clamp-2 break-words">
         {stripHtml(job.description)}
       </p>
 

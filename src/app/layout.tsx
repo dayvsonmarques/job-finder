@@ -19,10 +19,10 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={inter.className}>
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen w-full overflow-hidden">
           <Sidebar />
-          <main className="flex-1 overflow-auto">
-            <div className="max-w-5xl mx-auto p-8">{children}</div>
+          <main className="flex-1 min-w-0 overflow-auto">
+            <div className="w-full p-8">{children}</div>
           </main>
         </div>
         <SearchScheduler />
