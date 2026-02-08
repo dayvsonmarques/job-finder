@@ -17,7 +17,11 @@ export async function POST() {
     );
   }
 
-  const results = await searchJobs(config.keywords, config.location);
+  const enabledSources = config.enabledSources
+    ? config.enabledSources.split(",")
+    : [];
+
+  const results = await searchJobs(config.keywords, config.location, enabledSources);
 
   let savedCount = 0;
   for (const job of results) {

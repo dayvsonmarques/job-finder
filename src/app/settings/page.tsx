@@ -1,13 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SEARCH_INTERVALS } from "@/lib/constants";
+import { SEARCH_INTERVALS, JOB_SOURCES, ALL_SOURCE_KEYS, JobSourceKey } from "@/lib/constants";
 import { SearchConfig } from "@/types";
 import { Save, Loader2, Settings, Clock } from "lucide-react";
 import { clsx } from "clsx";
 
+function parseEnabledSources(raw: string): Set<JobSourceKey> {
+  if (!raw) return new Set(ALL_SOURCE_KEYS);
+  return new Set(raw.split(",").filter(Boolean) as JobSourceKey[]);
+}
+
+function serializeEnabledSources(sources: Set<JobSourceKey>): string {
+  return Array.from(sources).join(",");
+}
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<SearchConfig | null>(null);
+  const [enabledSources, setEnabledSources] = useState<Set<JobSourceKey>>(new Set(ALL_SOURCE_KEYS));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -17,9 +27,28 @@ export default function SettingsPage() {
       .then((res) => res.json())
       .then((data) => {
         setConfig(data);
+        setEnabledSources(parseEnabledSources(data.enabledSources));
         setLoading(false);
       });
   }, []);
+
+  const toggleSource = (key: JobSourceKey) => {
+    setEnabledSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllSources = () => {
+    setEnabledSources((prev) =>
+      prev.size === ALL_SOURCE_KEYS.length ? new Set() : new Set(ALL_SOURCE_KEYS)
+    );
+  };
 
   const handleSave = async () => {
     if (!config) return;
@@ -27,7 +56,10 @@ export default function SettingsPage() {
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
+      body: JSON.stringify({
+        ...config,
+        enabledSources: serializeEnabledSources(enabledSources),
+      }),
     });
     setSaving(false);
     setSaved(true);
@@ -79,6 +111,50 @@ export default function SettingsPage() {
             placeholder="Ex: Brasil, Remote, São Paulo"
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Fontes de busca
+            </label>
+            <button
+              onClick={toggleAllSources}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+            >
+              {enabledSources.size === ALL_SOURCE_KEYS.length
+                ? "Desmarcar todas"
+                : "Selecionar todas"}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {ALL_SOURCE_KEYS.map((key) => (
+              <label
+                key={key}
+                className={clsx(
+                  "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors",
+                  enabledSources.has(key)
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabledSources.has(key)}
+                  onChange={() => toggleSource(key)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span
+                  className={clsx(
+                    "text-sm font-medium",
+                    enabledSources.has(key) ? "text-blue-700" : "text-gray-600"
+                  )}
+                >
+                  {JOB_SOURCES[key]}
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div>

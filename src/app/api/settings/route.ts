@@ -21,6 +21,7 @@ export async function PUT(request: NextRequest) {
       keywords: body.keywords,
       location: body.location,
       intervalHours: body.intervalHours,
+      enabledSources: body.enabledSources ?? "",
       isActive: body.isActive,
     },
     create: {
@@ -28,6 +29,7 @@ export async function PUT(request: NextRequest) {
       keywords: body.keywords || "",
       location: body.location || "",
       intervalHours: body.intervalHours || 6,
+      enabledSources: body.enabledSources ?? "",
       isActive: body.isActive ?? true,
     },
   });

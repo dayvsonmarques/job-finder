@@ -25,6 +25,7 @@ export interface SearchConfig {
   keywords: string;
   location: string;
   intervalHours: number;
+  enabledSources: string;
   lastSearchAt: string | null;
   isActive: boolean;
 }

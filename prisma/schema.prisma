@@ -28,12 +28,13 @@ model Job {
 }
 
 model SearchConfig {
-  id            String    @id
-  keywords      String    @default("")
-  location      String    @default("")
-  intervalHours Int       @default(6)
-  lastSearchAt  DateTime?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id
+  keywords       String    @default("")
+  location       String    @default("")
+  intervalHours  Int       @default(6)
+  enabledSources String    @default("")
+  lastSearchAt   DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
