@@ -66,8 +66,9 @@ function mapArbeitnowJob(job: ArbeitnowJob): JobSearchResult {
   };
 }
 
-async function fetchRemotiveJobs(keywords: string): Promise<JobSearchResult[]> {
-  const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(keywords)}&limit=50`;
+async function fetchRemotiveJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
+  const query = [keywords, location].filter(Boolean).join(" ");
+  const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=50`;
   const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
 
   if (!response.ok) return [];
@@ -76,8 +77,9 @@ async function fetchRemotiveJobs(keywords: string): Promise<JobSearchResult[]> {
   return (data.jobs || []).map(mapRemotiveJob);
 }
 
-async function fetchArbeitnowJobs(keywords: string): Promise<JobSearchResult[]> {
-  const url = `https://www.arbeitnow.com/api/job-board-api?search=${encodeURIComponent(keywords)}`;
+async function fetchArbeitnowJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
+  const query = [keywords, location].filter(Boolean).join(" ");
+  const url = `https://www.arbeitnow.com/api/job-board-api?search=${encodeURIComponent(query)}`;
   const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
 
   if (!response.ok) return [];
@@ -86,16 +88,29 @@ async function fetchArbeitnowJobs(keywords: string): Promise<JobSearchResult[]> 
   return (data.data || []).map(mapArbeitnowJob);
 }
 
-export async function searchJobs(keywords: string): Promise<JobSearchResult[]> {
+function matchesLocation(job: JobSearchResult, location: string): boolean {
+  if (!location) return true;
+  const normalizedLocation = location.toLowerCase();
+  return (
+    job.location.toLowerCase().includes(normalizedLocation) ||
+    job.title.toLowerCase().includes(normalizedLocation) ||
+    job.description.toLowerCase().includes(normalizedLocation)
+  );
+}
+
+export async function searchJobs(keywords: string, location: string = ""): Promise<JobSearchResult[]> {
   const results = await Promise.allSettled([
-    fetchRemotiveJobs(keywords),
-    fetchArbeitnowJobs(keywords),
+    fetchRemotiveJobs(keywords, location),
+    fetchArbeitnowJobs(keywords, location),
   ]);
 
-  return results
+  const jobs = results
     .filter(
       (r): r is PromiseFulfilledResult<JobSearchResult[]> =>
         r.status === "fulfilled"
     )
     .flatMap((r) => r.value);
+
+  if (!location) return jobs;
+  return jobs.filter((job) => matchesLocation(job, location));
 }

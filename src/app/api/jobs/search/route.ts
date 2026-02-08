@@ -17,7 +17,7 @@ export async function POST() {
     );
   }
 
-  const results = await searchJobs(config.keywords);
+  const results = await searchJobs(config.keywords, config.location);
 
   let savedCount = 0;
   for (const job of results) {
