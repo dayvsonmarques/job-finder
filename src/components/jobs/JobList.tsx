@@ -17,12 +17,17 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
   const [searching, setSearching] = useState(false);
 
   const fetchJobs = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams({ filter });
-    const res = await fetch(`/api/jobs?${params}`);
-    const data = await res.json();
-    setJobs(data);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({ filter });
+      const res = await fetch(`/api/jobs?${params}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setJobs(data);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
   useEffect(() => {
@@ -36,10 +41,14 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
   }, [fetchJobs]);
 
   const triggerSearch = async () => {
-    setSearching(true);
-    await fetch("/api/jobs/search", { method: "POST" });
-    setSearching(false);
-    fetchJobs();
+    try {
+      setSearching(true);
+      await fetch("/api/jobs/search", { method: "POST" });
+    } catch {
+    } finally {
+      setSearching(false);
+      fetchJobs();
+    }
   };
 
   const toggleFavorite = async (id: string) => {
