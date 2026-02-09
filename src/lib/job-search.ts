@@ -1,35 +1,12 @@
-import * as cheerio from "cheerio";
 import { JobSearchResult } from "@/types";
 import { JOB_SOURCES, JobSourceKey } from "./constants";
 
 const FETCH_TIMEOUT = 15000;
 
-const SCRAPER_USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
-const SCRAPER_HEADERS = {
-  "User-Agent": SCRAPER_USER_AGENT,
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-};
-
-async function safeFetch(url: string, headers = SCRAPER_HEADERS): Promise<string | null> {
+async function safeFetchJson<T>(url: string, headers: Record<string, string> = {}): Promise<T | null> {
   try {
     const response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(FETCH_TIMEOUT),
-    });
-    if (!response.ok) return null;
-    return await response.text();
-  } catch {
-    return null;
-  }
-}
-
-async function safeFetchJson<T>(url: string): Promise<T | null> {
-  try {
-    const response = await fetch(url, {
-      headers: { ...SCRAPER_HEADERS, Accept: "application/json" },
+      headers: { Accept: "application/json", ...headers },
       signal: AbortSignal.timeout(FETCH_TIMEOUT),
     });
     if (!response.ok) return null;
@@ -39,286 +16,73 @@ async function safeFetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
-function parseJsonLdJobPostings($: cheerio.CheerioAPI, source: string, fallbackLocation: string): JobSearchResult[] {
-  const jobs: JobSearchResult[] = [];
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const json = JSON.parse($(el).text());
-      const items = json?.itemListElement || (Array.isArray(json) ? json : [json]);
+interface JSearchResponse {
+  data: {
+    job_id: string;
+    employer_name: string;
+    job_title: string;
+    job_description: string;
+    job_apply_link: string;
+    job_city: string;
+    job_state: string;
+    job_country: string;
+    job_posted_at_datetime_utc: string;
+    job_min_salary: number | null;
+    job_max_salary: number | null;
+    job_salary_currency: string | null;
+    job_required_skills: string[] | null;
+  }[];
+}
 
-      items.forEach((item: Record<string, unknown>) => {
-        const posting = (item?.item || item) as Record<string, unknown>;
-        if (posting?.["@type"] !== "JobPosting") return;
+async function fetchJSearchJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return [];
 
-        const hiringOrg = posting.hiringOrganization as Record<string, string> | undefined;
-        const jobLoc = posting.jobLocation as Record<string, unknown> | undefined;
-        const address = jobLoc?.address as Record<string, string> | undefined;
+  const query = [keywords, location].filter(Boolean).join(" in ");
+  const params = new URLSearchParams({
+    query,
+    page: "1",
+    num_pages: "2",
+    date_posted: "month",
+    remote_jobs_only: "false",
+  });
 
-        jobs.push({
-          title: String(posting.title || ""),
-          company: hiringOrg?.name || "Empresa não informada",
-          location: address?.addressLocality || address?.addressRegion || fallbackLocation,
-          description: String(posting.description || ""),
-          url: String(posting.url || ""),
-          source,
-          postedAt: posting.datePosted ? new Date(String(posting.datePosted)) : undefined,
-          externalId: String(posting.identifier || posting.url || ""),
-        });
-      });
-    } catch {
-      // skip malformed JSON-LD
+  const data = await safeFetchJson<JSearchResponse>(
+    `https://jsearch.p.rapidapi.com/search?${params}`,
+    {
+      "X-RapidAPI-Key": apiKey,
+      "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
     }
-  });
-  return jobs;
-}
+  );
 
-// ─── LinkedIn ────────────────────────────────────────────────────────────────
+  if (!data?.data) return [];
 
-async function fetchLinkedInJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const url =
-    `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search` +
-    `?keywords=${encodeURIComponent(keywords)}` +
-    `&location=${encodeURIComponent(location || "Brasil")}` +
-    `&start=0&count=25`;
+  return data.data.map((job) => {
+    const salary = formatSalary(job.job_min_salary, job.job_max_salary, job.job_salary_currency);
+    const loc = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(", ");
 
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const jobs: JobSearchResult[] = [];
-
-  $("li").each((_, el) => {
-    const title = $(el).find(".base-search-card__title").text().trim();
-    const company = $(el).find(".base-search-card__subtitle").text().trim();
-    const jobLocation = $(el).find(".job-search-card__location").text().trim();
-    const link = $(el).find("a.base-card__full-link").attr("href") || "";
-    const dateStr = $(el).find("time").attr("datetime");
-
-    if (!title || !link) return;
-
-    jobs.push({
-      title,
-      company,
-      location: jobLocation || "N/A",
-      description: `${title} at ${company} - ${jobLocation}`,
-      url: link.split("?")[0],
-      source: JOB_SOURCES.LINKEDIN,
-      postedAt: dateStr ? new Date(dateStr) : undefined,
-      externalId: link.split("/view/")[1]?.split("/")[0] || undefined,
-    });
-  });
-
-  return jobs;
-}
-
-// ─── Catho ───────────────────────────────────────────────────────────────────
-
-async function fetchCathoJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const url = `https://www.catho.com.br/vagas/?q=${encodeURIComponent(query)}&page=1`;
-
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-
-  const jsonLdJobs = parseJsonLdJobPostings($, JOB_SOURCES.CATHO, location || "Brasil");
-  if (jsonLdJobs.length > 0) return jsonLdJobs;
-
-  const jobs: JobSearchResult[] = [];
-  $("[data-testid='job-card'], .job-card, article").each((_, el) => {
-    const title = $(el).find("h2, [data-testid='job-title'], .job-card__title").first().text().trim();
-    const company = $(el).find("[data-testid='job-company'], .job-card__company").first().text().trim();
-    const jobLocation = $(el).find("[data-testid='job-location'], .job-card__location").first().text().trim();
-    const link = $(el).find("a").first().attr("href") || "";
-
-    if (!title) return;
-
-    const fullUrl = link.startsWith("http") ? link : `https://www.catho.com.br${link}`;
-    jobs.push({
-      title,
-      company: company || "Empresa não informada",
-      location: jobLocation || location || "Brasil",
-      description: `${title} - ${company}`,
-      url: fullUrl,
-      source: JOB_SOURCES.CATHO,
-    });
-  });
-
-  return jobs;
-}
-
-// ─── Google Jobs ─────────────────────────────────────────────────────────────
-
-async function fetchGoogleJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = `${keywords} vagas ${location || "Brasil"}`;
-  const url =
-    `https://www.google.com/search` +
-    `?q=${encodeURIComponent(query)}` +
-    `&ibp=htl;jobs&hl=pt-BR`;
-
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const jobs: JobSearchResult[] = [];
-
-  $("script").each((_, el) => {
-    const content = $(el).text();
-    if (!content.includes("JobPosting")) return;
-
-    try {
-      const jsonLdBlocks = content.match(/\{[^]*?"@type"\s*:\s*"JobPosting"[^]*?\}/g);
-      jsonLdBlocks?.forEach((block) => {
-        const posting = JSON.parse(block);
-        jobs.push({
-          title: posting.title || "",
-          company: posting.hiringOrganization?.name || "",
-          location: posting.jobLocation?.address?.addressLocality || location || "Brasil",
-          description: posting.description || "",
-          url: posting.url || `https://www.google.com/search?q=${encodeURIComponent(query)}&ibp=htl;jobs`,
-          source: JOB_SOURCES.GOOGLE,
-          postedAt: posting.datePosted ? new Date(posting.datePosted) : undefined,
-        });
-      });
-    } catch {
-      // skip parse errors
-    }
-  });
-
-  if (jobs.length > 0) return jobs;
-
-  $(".BjJfJf, .PwjeAc, .gws-plugins-horizon-jobs__tl-lif").each((_, el) => {
-    const title = $(el).find(".BjJfJf, .PwjeAc, .sH3zFd, div[role='heading']").first().text().trim();
-    const company = $(el).find(".vNEEBe, .nJlDiv, .wHhUb").first().text().trim();
-    const jobLocation = $(el).find(".Qk80Jf, .pwTheOc, .e6m0Sd").first().text().trim();
-
-    if (!title) return;
-
-    jobs.push({
-      title,
-      company: company || "Empresa não informada",
-      location: jobLocation || location || "Brasil",
-      description: `${title} - ${company}`,
-      url: `https://www.google.com/search?q=${encodeURIComponent(query)}&ibp=htl;jobs`,
-      source: JOB_SOURCES.GOOGLE,
-    });
-  });
-
-  return jobs;
-}
-
-// ─── Glassdoor ───────────────────────────────────────────────────────────────
-
-async function fetchGlassdoorJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const url = `https://www.glassdoor.com.br/Vaga/brasil-${encodeURIComponent(query)}-vagas-SRCH_IL.0,6_IN36_KO7,${7 + query.length}.htm`;
-
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const jobs: JobSearchResult[] = [];
-
-  const jsonLdJobs = parseJsonLdJobPostings($, JOB_SOURCES.GLASSDOOR, location || "Brasil");
-  if (jsonLdJobs.length > 0) return jsonLdJobs;
-
-  $("[data-test='jobListing'], .JobsList_jobListItem__JBBUQ, li.react-job-listing").each((_, el) => {
-    const title = $(el).find("[data-test='job-title'], .jobTitle, .job-title").first().text().trim();
-    const company = $(el).find("[data-test='emp-name'], .EmployerProfile_compactEmployerName__LE242, .job-search-key-l2wjgv").first().text().trim();
-    const jobLocation = $(el).find("[data-test='emp-location'], .compactEmployerLocation, .job-search-key-1p4ilu3").first().text().trim();
-    const link = $(el).find("a[data-test='job-title'], a.jobTitle, a").first().attr("href") || "";
-
-    if (!title) return;
-
-    const fullUrl = link.startsWith("http") ? link : `https://www.glassdoor.com.br${link}`;
-    jobs.push({
-      title,
-      company: company || "Empresa não informada",
-      location: jobLocation || location || "Brasil",
-      description: `${title} - ${company}`,
-      url: fullUrl.split("?")[0],
-      source: JOB_SOURCES.GLASSDOOR,
-    });
-  });
-
-  return jobs;
-}
-
-// ─── ProgramaThor ────────────────────────────────────────────────────────────
-
-async function fetchProgramaThorJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const url = `https://programathor.com.br/jobs?search=${encodeURIComponent(query)}`;
-
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const jobs: JobSearchResult[] = [];
-
-  $(".cell-list__item, .card-job, .job-card, article").each((_, el) => {
-    const title = $(el).find("h3, .cell-list__item-title, .card-job__title, .job-card__title").first().text().trim();
-    const company = $(el).find(".cell-list__item-company, .card-job__company, .job-card__company, span").first().text().trim();
-    const jobLocation = $(el).find(".cell-list__item-local, .card-job__location").first().text().trim();
-    const link = $(el).find("a").first().attr("href") || "";
-    const salary = $(el).find(".cell-list__item-salary, .card-job__salary").first().text().trim();
-
-    if (!title) return;
-
-    const fullUrl = link.startsWith("http") ? link : `https://programathor.com.br${link}`;
-    jobs.push({
-      title,
-      company: company || "Empresa não informada",
-      location: jobLocation || location || "Brasil",
-      description: `${title} - ${company}`,
-      url: fullUrl,
-      source: JOB_SOURCES.PROGRAMATHOR,
+    return {
+      title: job.job_title,
+      company: job.employer_name || "Empresa não informada",
+      location: loc || "N/A",
+      description: job.job_description || "",
+      url: job.job_apply_link,
+      source: JOB_SOURCES.JSEARCH,
       salary: salary || undefined,
-    });
+      tags: job.job_required_skills?.join(", ") || undefined,
+      postedAt: job.job_posted_at_datetime_utc ? new Date(job.job_posted_at_datetime_utc) : undefined,
+      externalId: job.job_id,
+    };
   });
-
-  return jobs;
 }
 
-// ─── 99Freelas ───────────────────────────────────────────────────────────────
-
-async function fetch99FreelasJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const url = `https://www.99freelas.com.br/projects?search=${encodeURIComponent(query)}`;
-
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const jobs: JobSearchResult[] = [];
-
-  $(".result-container, .project-list__item, .project-item, article, li.result").each((_, el) => {
-    const title = $(el).find("h1 a, h2 a, .result-container__title a, .project-name a").first().text().trim();
-    const description = $(el).find(".result-container__description, .project-description, p").first().text().trim();
-    const link = $(el).find("h1 a, h2 a, .result-container__title a, .project-name a").first().attr("href") || "";
-    const budget = $(el).find(".result-container__budget, .project-budget, .budget").first().text().trim();
-    const tags = $(el).find(".result-container__skills a, .skill-tag, .tag").map((_, t) => $(t).text().trim()).get();
-
-    if (!title) return;
-
-    const fullUrl = link.startsWith("http") ? link : `https://www.99freelas.com.br${link}`;
-    jobs.push({
-      title,
-      company: "99Freelas (Freelance)",
-      location: location || "Remoto",
-      description: description || title,
-      url: fullUrl,
-      source: JOB_SOURCES.FREELAS99,
-      salary: budget || undefined,
-      tags: tags.length > 0 ? tags.join(", ") : undefined,
-    });
-  });
-
-  return jobs;
+function formatSalary(min: number | null, max: number | null, currency: string | null): string | null {
+  if (!min && !max) return null;
+  const cur = currency || "USD";
+  if (min && max) return `${cur} ${min.toLocaleString()} - ${max.toLocaleString()}`;
+  if (min) return `${cur} ${min.toLocaleString()}+`;
+  return `até ${cur} ${max!.toLocaleString()}`;
 }
-
-// ─── Remotive (API) ──────────────────────────────────────────────────────────
 
 interface RemotiveResponse {
   jobs: {
@@ -355,8 +119,6 @@ async function fetchRemotiveJobs(keywords: string, location: string): Promise<Jo
   }));
 }
 
-// ─── Arbeitnow (API) ────────────────────────────────────────────────────────
-
 interface ArbeitnowResponse {
   data: {
     slug: string;
@@ -390,30 +152,13 @@ async function fetchArbeitnowJobs(keywords: string, location: string): Promise<J
   }));
 }
 
-// ─── Orchestrator ────────────────────────────────────────────────────────────
-
 type FetcherFn = (keywords: string, location: string) => Promise<JobSearchResult[]>;
 
 const SOURCE_FETCHERS: Record<JobSourceKey, FetcherFn> = {
-  LINKEDIN: fetchLinkedInJobs,
-  CATHO: fetchCathoJobs,
-  GOOGLE: fetchGoogleJobs,
-  GLASSDOOR: fetchGlassdoorJobs,
-  PROGRAMATHOR: fetchProgramaThorJobs,
-  FREELAS99: fetch99FreelasJobs,
+  JSEARCH: fetchJSearchJobs,
   REMOTIVE: fetchRemotiveJobs,
   ARBEITNOW: fetchArbeitnowJobs,
 };
-
-function matchesLocation(job: JobSearchResult, location: string): boolean {
-  if (!location) return true;
-  const normalized = location.toLowerCase();
-  return (
-    job.location.toLowerCase().includes(normalized) ||
-    job.title.toLowerCase().includes(normalized) ||
-    job.description.toLowerCase().includes(normalized)
-  );
-}
 
 export async function searchJobs(
   keywords: string,
@@ -430,13 +175,10 @@ export async function searchJobs(
     fetchers.map(([, fn]) => fn(keywords, location))
   );
 
-  const jobs = results
+  return results
     .filter(
       (r): r is PromiseFulfilledResult<JobSearchResult[]> =>
         r.status === "fulfilled"
     )
     .flatMap((r) => r.value);
-
-  if (!location) return jobs;
-  return jobs.filter((job) => matchesLocation(job, location));
 }

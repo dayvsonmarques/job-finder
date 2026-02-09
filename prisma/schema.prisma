@@ -18,6 +18,7 @@ model Job {
   source      String
   salary      String?
   tags        String?
+  aiSummary   String?
   postedAt    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

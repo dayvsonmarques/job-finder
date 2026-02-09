@@ -11,6 +11,7 @@ export interface Job {
   source: string;
   salary: string | null;
   tags: string | null;
+  aiSummary: string | null;
   postedAt: string | null;
   createdAt: string;
   updatedAt: string;

@@ -7,6 +7,7 @@ import {
   MapPin,
   Building2,
   DollarSign,
+  Sparkles,
 } from "lucide-react";
 import { Job } from "@/types";
 import { clsx } from "clsx";
@@ -94,8 +95,15 @@ export function JobCard({
       </div>
 
       <p className="mt-3 text-sm text-gray-600 line-clamp-2 break-words">
-        {stripHtml(job.description)}
+        {job.aiSummary || stripHtml(job.description)}
       </p>
+
+      {job.aiSummary && (
+        <div className="mt-2 flex items-center gap-1 text-xs text-purple-500">
+          <Sparkles className="w-3 h-3" />
+          <span>Resumo por IA</span>
+        </div>
+      )}
 
       {tags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

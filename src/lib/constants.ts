@@ -6,12 +6,7 @@ export const SEARCH_INTERVALS = [
 ];
 
 export const JOB_SOURCES = {
-  LINKEDIN: "LinkedIn",
-  CATHO: "Catho",
-  GOOGLE: "Google Jobs",
-  GLASSDOOR: "Glassdoor",
-  PROGRAMATHOR: "ProgramaThor",
-  FREELAS99: "99Freelas",
+  JSEARCH: "JSearch",
   REMOTIVE: "Remotive",
   ARBEITNOW: "Arbeitnow",
 } as const;
@@ -19,9 +14,6 @@ export const JOB_SOURCES = {
 export type JobSourceKey = keyof typeof JOB_SOURCES;
 
 export const ALL_SOURCE_KEYS = Object.keys(JOB_SOURCES) as JobSourceKey[];
-
-export const SCRAPER_USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 export const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 

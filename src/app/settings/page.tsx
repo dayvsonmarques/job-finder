@@ -3,33 +3,48 @@
 import { useState, useEffect } from "react";
 import { SEARCH_INTERVALS, JOB_SOURCES, ALL_SOURCE_KEYS, JobSourceKey } from "@/lib/constants";
 import { SearchConfig } from "@/types";
-import { Save, Loader2, Settings, Clock } from "lucide-react";
+import { Save, Loader2, Settings, Clock, Sparkles, Key, CheckCircle2, XCircle } from "lucide-react";
 import { clsx } from "clsx";
+
+interface ApiStatus {
+  groq: boolean;
+  rapidApi: boolean;
+}
 
 function parseEnabledSources(raw: string): Set<JobSourceKey> {
   if (!raw) return new Set(ALL_SOURCE_KEYS);
-  return new Set(raw.split(",").filter(Boolean) as JobSourceKey[]);
+  const parsed = raw.split(",").filter((k) => ALL_SOURCE_KEYS.includes(k as JobSourceKey)) as JobSourceKey[];
+  return parsed.length > 0 ? new Set(parsed) : new Set(ALL_SOURCE_KEYS);
 }
 
 function serializeEnabledSources(sources: Set<JobSourceKey>): string {
   return Array.from(sources).join(",");
 }
 
+const SOURCE_DESCRIPTIONS: Record<JobSourceKey, string> = {
+  JSEARCH: "LinkedIn, Indeed, Glassdoor e mais (requer RapidAPI Key)",
+  REMOTIVE: "Vagas remotas internacionais (gratuito)",
+  ARBEITNOW: "Vagas remotas Europa/Global (gratuito)",
+};
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<SearchConfig | null>(null);
   const [enabledSources, setEnabledSources] = useState<Set<JobSourceKey>>(new Set(ALL_SOURCE_KEYS));
+  const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
-      .then((data) => {
-        setConfig(data);
-        setEnabledSources(parseEnabledSources(data.enabledSources));
-        setLoading(false);
-      });
+    Promise.all([
+      fetch("/api/settings").then((r) => r.json()),
+      fetch("/api/status").then((r) => r.json()),
+    ]).then(([configData, statusData]) => {
+      setConfig(configData);
+      setEnabledSources(parseEnabledSources(configData.enabledSources));
+      setApiStatus(statusData);
+      setLoading(false);
+    });
   }, []);
 
   const toggleSource = (key: JobSourceKey) => {
@@ -86,6 +101,46 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {apiStatus && (
+        <div className="max-w-2xl bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 p-6 space-y-3">
+          <div className="flex items-center gap-2">
+            <Key className="w-5 h-5 text-purple-600" />
+            <h2 className="text-sm font-semibold text-purple-900">Status das Integrações</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              {apiStatus.rapidApi ? (
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className={apiStatus.rapidApi ? "text-green-800" : "text-gray-500"}>
+                JSearch (RapidAPI) — {apiStatus.rapidApi ? "Configurado" : "Não configurado"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              {apiStatus.groq ? (
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className={apiStatus.groq ? "text-green-800" : "text-gray-500"}>
+                <span className="inline-flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Groq IA
+                </span>
+                {" "}— {apiStatus.groq ? "Configurado" : "Não configurado"}
+              </span>
+            </div>
+          </div>
+          {(!apiStatus.rapidApi || !apiStatus.groq) && (
+            <p className="text-xs text-purple-600">
+              Configure as chaves no arquivo .env (RAPIDAPI_KEY, GROQ_API_KEY) para habilitar todas as funcionalidades.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="max-w-2xl bg-white rounded-xl border border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -98,6 +153,12 @@ export default function SettingsPage() {
             placeholder="Ex: React, Node.js, TypeScript"
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          {apiStatus?.groq && (
+            <p className="mt-1 text-xs text-purple-500 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              A IA otimizará automaticamente a query de busca
+            </p>
+          )}
         </div>
 
         <div>
@@ -127,31 +188,37 @@ export default function SettingsPage() {
                 : "Selecionar todas"}
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {ALL_SOURCE_KEYS.map((key) => (
               <label
                 key={key}
                 className={clsx(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors",
+                  "flex items-start gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors",
                   enabledSources.has(key)
                     ? "border-blue-500 bg-blue-50"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-gray-200 hover:border-gray-300",
+                  key === "JSEARCH" && !apiStatus?.rapidApi && "opacity-60"
                 )}
               >
                 <input
                   type="checkbox"
                   checked={enabledSources.has(key)}
                   onChange={() => toggleSource(key)}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span
-                  className={clsx(
-                    "text-sm font-medium",
-                    enabledSources.has(key) ? "text-blue-700" : "text-gray-600"
-                  )}
-                >
-                  {JOB_SOURCES[key]}
-                </span>
+                <div>
+                  <span
+                    className={clsx(
+                      "text-sm font-medium",
+                      enabledSources.has(key) ? "text-blue-700" : "text-gray-600"
+                    )}
+                  >
+                    {JOB_SOURCES[key]}
+                  </span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {SOURCE_DESCRIPTIONS[key]}
+                  </p>
+                </div>
               </label>
             ))}
           </div>

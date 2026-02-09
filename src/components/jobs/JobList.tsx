@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Job, JobFilter } from "@/types";
 import { JobCard } from "./JobCard";
-import { Loader2, Search, SearchX, RefreshCw } from "lucide-react";
+import { Loader2, Search, SearchX, RefreshCw, Sparkles } from "lucide-react";
 
 interface JobListProps {
   filter: JobFilter;
@@ -15,6 +15,7 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [searching, setSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState<{ found: number; saved: number; aiSummarized: number; aiEnhanced: boolean } | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -43,7 +44,13 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
   const triggerSearch = async () => {
     try {
       setSearching(true);
-      await fetch("/api/jobs/search", { method: "POST" });
+      setSearchResult(null);
+      const res = await fetch("/api/jobs/search", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResult(data);
+        setTimeout(() => setSearchResult(null), 8000);
+      }
     } catch {
     } finally {
       setSearching(false);
@@ -125,6 +132,26 @@ export function JobList({ filter, showSearchControls = false }: JobListProps) {
           </button>
         )}
       </div>
+
+      {searchResult && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+          <span>
+            {searchResult.found} vagas encontradas, {searchResult.saved} salvas
+          </span>
+          {searchResult.aiEnhanced && (
+            <span className="flex items-center gap-1 text-purple-600">
+              <Sparkles className="w-3 h-3" />
+              Query otimizada por IA
+            </span>
+          )}
+          {searchResult.aiSummarized > 0 && (
+            <span className="flex items-center gap-1 text-purple-600">
+              <Sparkles className="w-3 h-3" />
+              {searchResult.aiSummarized} resumidas por IA
+            </span>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
