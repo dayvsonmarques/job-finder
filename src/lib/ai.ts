@@ -96,3 +96,7 @@ export function isRapidApiConfigured(): boolean {
 export function isJoobleConfigured(): boolean {
   return !!process.env.JOOBLE_API_KEY;
 }
+
+export function isOpenAiConfigured(): boolean {
+  return !!process.env.OPENAI_API_KEY;
+}

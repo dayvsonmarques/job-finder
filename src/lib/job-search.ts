@@ -205,9 +205,109 @@ async function fetchJoobleJobs(keywords: string, location: string): Promise<JobS
   }));
 }
 
+interface OpenAIResponseItem {
+  type: string;
+  content?: { type: string; text?: string }[];
+}
+
+interface OpenAIResponseBody {
+  output: OpenAIResponseItem[];
+}
+
+interface OpenAIJobResult {
+  title?: string;
+  company?: string;
+  location?: string;
+  description?: string;
+  url?: string;
+  salary?: string | null;
+  tags?: string | null;
+  postedAt?: string | null;
+}
+
+async function fetchOpenAIJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return [];
+
+  const loc = location || "Brasil";
+
+  const prompt =
+    `Busque vagas de emprego REAIS publicadas recentemente (últimos 30 dias) com os seguintes critérios:\n` +
+    `- Palavras-chave: ${keywords}\n` +
+    `- Localização: ${loc} (apenas vagas para atuação no Brasil — presencial, híbrido ou remoto baseado no Brasil)\n\n` +
+    `Busque em sites como LinkedIn, Indeed, Glassdoor, Gupy, Catho, Vagas.com, Programathor, GeekHunter, Remotar, Trampos.co e outros.\n\n` +
+    `Retorne APENAS um JSON array válido com objetos contendo estes campos:\n` +
+    `- "title": título da vaga\n` +
+    `- "company": nome da empresa\n` +
+    `- "location": cidade/estado ou "Remoto - Brasil"\n` +
+    `- "description": descrição breve (2-3 frases sobre a vaga)\n` +
+    `- "url": link direto para a vaga (URL completa e real)\n` +
+    `- "salary": informação salarial se disponível, ou null\n` +
+    `- "tags": tecnologias/skills separadas por vírgula\n` +
+    `- "postedAt": data de publicação ISO 8601 ou null\n\n` +
+    `Retorne pelo menos 15 vagas reais e atuais se disponíveis. ` +
+    `APENAS o JSON array, sem texto adicional, sem markdown, sem code blocks.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        tools: [{ type: "web_search_preview" }],
+        input: prompt,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+
+    if (!res.ok) return [];
+
+    const data: OpenAIResponseBody = await res.json();
+
+    const messageOutput = data.output?.find((o) => o.type === "message");
+    const textContent = messageOutput?.content?.find((c) => c.type === "output_text");
+    const text = textContent?.text;
+
+    if (!text) return [];
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+
+    let jobs: OpenAIJobResult[];
+    try {
+      jobs = JSON.parse(jsonMatch[0]);
+    } catch {
+      return [];
+    }
+
+    if (!Array.isArray(jobs)) return [];
+
+    return jobs
+      .filter((job) => job.title && job.url)
+      .map((job) => ({
+        title: job.title || "",
+        company: job.company || "Empresa não informada",
+        location: job.location || "Brasil",
+        description: job.description || "",
+        url: job.url || "",
+        source: JOB_SOURCES.OPENAI,
+        salary: job.salary || undefined,
+        tags: job.tags || undefined,
+        postedAt: job.postedAt ? new Date(job.postedAt) : undefined,
+        externalId: undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 type FetcherFn = (keywords: string, location: string) => Promise<JobSearchResult[]>;
 
 const SOURCE_FETCHERS: Record<JobSourceKey, FetcherFn> = {
+  OPENAI: fetchOpenAIJobs,
   JSEARCH: fetchJSearchJobs,
   JOOBLE: fetchJoobleJobs,
 };

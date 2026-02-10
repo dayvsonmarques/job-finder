@@ -6,6 +6,7 @@ export const SEARCH_INTERVALS = [
 ];
 
 export const JOB_SOURCES = {
+  OPENAI: "OpenAI Web Search",
   JSEARCH: "JSearch",
   JOOBLE: "Jooble",
 } as const;

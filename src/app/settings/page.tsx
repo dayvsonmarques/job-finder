@@ -10,6 +10,7 @@ interface ApiStatus {
   groq: boolean;
   rapidApi: boolean;
   jooble: boolean;
+  openai: boolean;
 }
 
 function parseEnabledSources(raw: string): Set<JobSourceKey> {
@@ -23,6 +24,7 @@ function serializeEnabledSources(sources: Set<JobSourceKey>): string {
 }
 
 const SOURCE_DESCRIPTIONS: Record<JobSourceKey, string> = {
+  OPENAI: "Busca vagas em tempo real na internet usando IA (requer OpenAI API Key)",
   JSEARCH: "LinkedIn, Indeed, Glassdoor e mais (requer RapidAPI Key)",
   JOOBLE: "Catho, InfoJobs, Vagas.com, Indeed BR, Trabalha Brasil (requer Jooble API Key)",
 };
@@ -109,6 +111,7 @@ export default function SettingsPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
+              { key: "openai" as const, label: "OpenAI Web Search", icon: true },
               { key: "rapidApi" as const, label: "JSearch (RapidAPI)" },
               { key: "jooble" as const, label: "Jooble" },
               { key: "groq" as const, label: "Groq IA", icon: true },
@@ -129,9 +132,9 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          {(!apiStatus.rapidApi || !apiStatus.jooble || !apiStatus.groq) && (
+          {(!apiStatus.openai || !apiStatus.rapidApi || !apiStatus.jooble || !apiStatus.groq) && (
             <p className="text-xs text-purple-600">
-              Configure as chaves no arquivo .env (RAPIDAPI_KEY, JOOBLE_API_KEY, GROQ_API_KEY) para habilitar todas as funcionalidades.
+              Configure as chaves no arquivo .env (OPENAI_API_KEY, RAPIDAPI_KEY, JOOBLE_API_KEY, GROQ_API_KEY) para habilitar todas as funcionalidades.
             </p>
           )}
         </div>
@@ -193,6 +196,7 @@ export default function SettingsPage() {
                   enabledSources.has(key)
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300",
+                  key === "OPENAI" && !apiStatus?.openai && "opacity-60",
                   key === "JSEARCH" && !apiStatus?.rapidApi && "opacity-60",
                   key === "JOOBLE" && !apiStatus?.jooble && "opacity-60"
                 )}
