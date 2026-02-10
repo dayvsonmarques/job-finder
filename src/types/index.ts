@@ -43,3 +43,29 @@ export interface JobSearchResult {
   postedAt?: Date;
   externalId?: string;
 }
+
+export type CourseLevel = "pos-graduacao" | "mestrado" | "doutorado";
+export type CourseModality = "presencial" | "ead" | "hibrido";
+export type CourseShift = "matutino" | "vespertino" | "noturno" | "flexivel";
+
+export interface Course {
+  id: string;
+  institution: string;
+  program: string;
+  level: CourseLevel;
+  modality: CourseModality;
+  shift: CourseShift;
+  area: string;
+  city: string;
+  state: string;
+  duration: string;
+  url: string;
+  mecRecognized: boolean;
+  mecGrade: number | null;
+  price: string | null;
+  description: string;
+  tags: string[];
+}
+
+export type CourseModalityFilter = "all" | CourseModality;
+export type CourseLevelFilter = "all" | CourseLevel;

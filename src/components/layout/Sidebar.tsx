@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, Star, Send, Settings, Search } from "lucide-react";
+import { Briefcase, Star, Send, Settings, Search, GraduationCap } from "lucide-react";
 import { clsx } from "clsx";
 
 const MENU_ITEMS = [
   { href: "/", label: "Vagas", icon: Briefcase },
+  { href: "/courses", label: "Pós-Graduação", icon: GraduationCap },
   { href: "/favorites", label: "Favoritas", icon: Star },
   { href: "/submitted", label: "Submetidas", icon: Send },
   { href: "/settings", label: "Configurações", icon: Settings },

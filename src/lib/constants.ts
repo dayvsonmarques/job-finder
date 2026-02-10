@@ -7,8 +7,7 @@ export const SEARCH_INTERVALS = [
 
 export const JOB_SOURCES = {
   JSEARCH: "JSearch",
-  REMOTIVE: "Remotive",
-  ARBEITNOW: "Arbeitnow",
+  JOOBLE: "Jooble",
 } as const;
 
 export type JobSourceKey = keyof typeof JOB_SOURCES;

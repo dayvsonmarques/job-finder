@@ -9,6 +9,7 @@ import { clsx } from "clsx";
 interface ApiStatus {
   groq: boolean;
   rapidApi: boolean;
+  jooble: boolean;
 }
 
 function parseEnabledSources(raw: string): Set<JobSourceKey> {
@@ -23,8 +24,7 @@ function serializeEnabledSources(sources: Set<JobSourceKey>): string {
 
 const SOURCE_DESCRIPTIONS: Record<JobSourceKey, string> = {
   JSEARCH: "LinkedIn, Indeed, Glassdoor e mais (requer RapidAPI Key)",
-  REMOTIVE: "Vagas remotas internacionais (gratuito)",
-  ARBEITNOW: "Vagas remotas Europa/Global (gratuito)",
+  JOOBLE: "Catho, InfoJobs, Vagas.com, Indeed BR, Trabalha Brasil (requer Jooble API Key)",
 };
 
 export default function SettingsPage() {
@@ -108,34 +108,30 @@ export default function SettingsPage() {
             <h2 className="text-sm font-semibold text-purple-900">Status das Integrações</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center gap-2 text-sm">
-              {apiStatus.rapidApi ? (
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-              ) : (
-                <XCircle className="w-4 h-4 text-red-400" />
-              )}
-              <span className={apiStatus.rapidApi ? "text-green-800" : "text-gray-500"}>
-                JSearch (RapidAPI) — {apiStatus.rapidApi ? "Configurado" : "Não configurado"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              {apiStatus.groq ? (
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-              ) : (
-                <XCircle className="w-4 h-4 text-red-400" />
-              )}
-              <span className={apiStatus.groq ? "text-green-800" : "text-gray-500"}>
-                <span className="inline-flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Groq IA
+            {[
+              { key: "rapidApi" as const, label: "JSearch (RapidAPI)" },
+              { key: "jooble" as const, label: "Jooble" },
+              { key: "groq" as const, label: "Groq IA", icon: true },
+            ].map(({ key, label, icon }) => (
+              <div key={key} className="flex items-center gap-2 text-sm">
+                {apiStatus[key] ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-400" />
+                )}
+                <span className={apiStatus[key] ? "text-green-800" : "text-gray-500"}>
+                  <span className="inline-flex items-center gap-1">
+                    {icon && <Sparkles className="w-3 h-3" />}
+                    {label}
+                  </span>
+                  {" "}— {apiStatus[key] ? "Configurado" : "Não configurado"}
                 </span>
-                {" "}— {apiStatus.groq ? "Configurado" : "Não configurado"}
-              </span>
-            </div>
+              </div>
+            ))}
           </div>
-          {(!apiStatus.rapidApi || !apiStatus.groq) && (
+          {(!apiStatus.rapidApi || !apiStatus.jooble || !apiStatus.groq) && (
             <p className="text-xs text-purple-600">
-              Configure as chaves no arquivo .env (RAPIDAPI_KEY, GROQ_API_KEY) para habilitar todas as funcionalidades.
+              Configure as chaves no arquivo .env (RAPIDAPI_KEY, JOOBLE_API_KEY, GROQ_API_KEY) para habilitar todas as funcionalidades.
             </p>
           )}
         </div>
@@ -197,7 +193,8 @@ export default function SettingsPage() {
                   enabledSources.has(key)
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300",
-                  key === "JSEARCH" && !apiStatus?.rapidApi && "opacity-60"
+                  key === "JSEARCH" && !apiStatus?.rapidApi && "opacity-60",
+                  key === "JOOBLE" && !apiStatus?.jooble && "opacity-60"
                 )}
               >
                 <input

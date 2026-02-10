@@ -24,8 +24,9 @@ export async function POST() {
     ? config.enabledSources.split(",")
     : [];
 
-  const enhancedQuery = await enhanceSearchQuery(config.keywords, config.location);
-  const results = await searchJobs(enhancedQuery, config.location, enabledSources);
+  const location = config.location || "Brasil";
+  const enhancedQuery = await enhanceSearchQuery(config.keywords, location);
+  const results = await searchJobs(enhancedQuery, location, enabledSources);
 
   const newJobIds: string[] = [];
   let savedCount = 0;
@@ -73,13 +74,13 @@ export async function POST() {
   }
 
   if (isGroqConfigured() && newJobIds.length > 0) {
-    const toSummarize = await prisma.job.findMany({
+    const toSummarize: { id: string; title: string; company: string; description: string }[] = await prisma.job.findMany({
       where: { id: { in: newJobIds.slice(0, AI_SUMMARY_BATCH_SIZE) } },
       select: { id: true, title: true, company: true, description: true },
     });
 
     const summaryResults = await Promise.allSettled(
-      toSummarize.map(async (job) => {
+      toSummarize.map(async (job: { id: string; title: string; company: string; description: string }) => {
         const summary = await summarizeJob(job.title, job.company, job.description);
         if (summary) {
           await prisma.job.update({

@@ -63,27 +63,26 @@ export async function summarizeJob(
 }
 
 export async function enhanceSearchQuery(keywords: string, location: string): Promise<string> {
-  const fallback = [keywords, location].filter(Boolean).join(" ");
-
   const result = await callGroq(
     [
       {
         role: "system",
         content:
-          "Você otimiza consultas de busca de emprego. " +
+          "Você otimiza consultas de busca de emprego focadas no Brasil. " +
           "Dado palavras-chave e localização, gere UMA query de busca otimizada " +
           "em inglês para APIs de emprego. Retorne APENAS a query, sem explicações. " +
-          "Inclua termos sinônimos relevantes separados por espaço.",
+          "Inclua termos sinônimos relevantes separados por espaço. " +
+          "A localização deve sempre ser no Brasil.",
       },
       {
         role: "user",
-        content: `Palavras-chave: ${keywords}\nLocalização: ${location || "qualquer"}`,
+        content: `Palavras-chave: ${keywords}\nLocalização: ${location || "Brasil"}`,
       },
     ],
     60
   );
 
-  return result || fallback;
+  return result || keywords;
 }
 
 export function isGroqConfigured(): boolean {
@@ -92,4 +91,8 @@ export function isGroqConfigured(): boolean {
 
 export function isRapidApiConfigured(): boolean {
   return !!process.env.RAPIDAPI_KEY;
+}
+
+export function isJoobleConfigured(): boolean {
+  return !!process.env.JOOBLE_API_KEY;
 }

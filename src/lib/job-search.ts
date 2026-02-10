@@ -3,11 +3,17 @@ import { JOB_SOURCES, JobSourceKey } from "./constants";
 
 const FETCH_TIMEOUT = 15000;
 
-async function safeFetchJson<T>(url: string, headers: Record<string, string> = {}): Promise<T | null> {
+async function safeFetchJson<T>(url: string, options: RequestInit = {}): Promise<T | null> {
   try {
+    const { headers: optHeaders, ...restOptions } = options;
+    const mergedHeaders: Record<string, string> = {
+      Accept: "application/json",
+      ...(optHeaders as Record<string, string> || {}),
+    };
     const response = await fetch(url, {
-      headers: { Accept: "application/json", ...headers },
+      headers: mergedHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT),
+      ...restOptions,
     });
     if (!response.ok) return null;
     return await response.json();
@@ -38,20 +44,24 @@ async function fetchJSearchJobs(keywords: string, location: string): Promise<Job
   const apiKey = process.env.RAPIDAPI_KEY;
   if (!apiKey) return [];
 
-  const query = [keywords, location].filter(Boolean).join(" in ");
+  const loc = location || "Brasil";
+  const query = `${keywords} in ${loc}`;
   const params = new URLSearchParams({
     query,
     page: "1",
     num_pages: "2",
     date_posted: "month",
     remote_jobs_only: "false",
+    country: "BR",
   });
 
   const data = await safeFetchJson<JSearchResponse>(
     `https://jsearch.p.rapidapi.com/search?${params}`,
     {
-      "X-RapidAPI-Key": apiKey,
-      "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+      headers: {
+        "X-RapidAPI-Key": apiKey,
+        "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+      },
     }
   );
 
@@ -78,77 +88,120 @@ async function fetchJSearchJobs(keywords: string, location: string): Promise<Job
 
 function formatSalary(min: number | null, max: number | null, currency: string | null): string | null {
   if (!min && !max) return null;
-  const cur = currency || "USD";
-  if (min && max) return `${cur} ${min.toLocaleString()} - ${max.toLocaleString()}`;
-  if (min) return `${cur} ${min.toLocaleString()}+`;
-  return `até ${cur} ${max!.toLocaleString()}`;
+  const cur = currency || "BRL";
+  if (min && max) return `${cur} ${min.toLocaleString("pt-BR")} - ${max.toLocaleString("pt-BR")}`;
+  if (min) return `${cur} ${min.toLocaleString("pt-BR")}+`;
+  return `até ${cur} ${max!.toLocaleString("pt-BR")}`;
 }
 
-interface RemotiveResponse {
+interface JoobleResponse {
   jobs: {
-    id: number;
-    url: string;
     title: string;
-    company_name: string;
-    tags: string[];
-    publication_date: string;
-    candidate_required_location: string;
-    salary: string;
-    description: string;
-  }[];
-}
-
-async function fetchRemotiveJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const data = await safeFetchJson<RemotiveResponse>(
-    `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=50`
-  );
-  if (!data?.jobs) return [];
-
-  return data.jobs.map((job) => ({
-    title: job.title,
-    company: job.company_name,
-    location: job.candidate_required_location || "Remote",
-    description: job.description || "",
-    url: job.url,
-    source: JOB_SOURCES.REMOTIVE,
-    salary: job.salary || undefined,
-    tags: job.tags?.join(", ") || undefined,
-    postedAt: job.publication_date ? new Date(job.publication_date) : undefined,
-    externalId: String(job.id),
-  }));
-}
-
-interface ArbeitnowResponse {
-  data: {
-    slug: string;
-    company_name: string;
-    title: string;
-    description: string;
-    tags: string[];
     location: string;
-    url: string;
-    created_at: number;
+    snippet: string;
+    salary: string;
+    source: string;
+    type: string;
+    link: string;
+    company: string;
+    updated: string;
+    id: number;
   }[];
 }
 
-async function fetchArbeitnowJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
-  const query = [keywords, location].filter(Boolean).join(" ");
-  const data = await safeFetchJson<ArbeitnowResponse>(
-    `https://www.arbeitnow.com/api/job-board-api?search=${encodeURIComponent(query)}`
-  );
-  if (!data?.data) return [];
+const BRAZIL_LOCATION = /brazil|brasil|são paulo|rio de janeiro|belo horizonte|curitiba|porto alegre|brasília|recife|fortaleza|salvador|campinas|florianópolis|goiânia|manaus|belém|remote|remoto|anywhere|worldwide|global|latam|latin america|south america/i;
 
-  return data.data.map((job) => ({
-    title: job.title,
-    company: job.company_name,
-    location: job.location || "Remote",
-    description: job.description || "",
-    url: job.url,
-    source: JOB_SOURCES.ARBEITNOW,
-    tags: job.tags?.join(", ") || undefined,
-    postedAt: job.created_at ? new Date(job.created_at * 1000) : undefined,
-    externalId: job.slug,
+function cleanKeywords(keywords: string): string {
+  return keywords
+    .replace(/\b(remoto|remote|brasil|brazil)\b/gi, "")
+    .replace(/,\s*,/g, ",")
+    .replace(/^[,\s]+|[,\s]+$/g, "")
+    .trim();
+}
+
+const PT_TO_EN: Record<string, string> = {
+  desenvolvedor: "developer",
+  programador: "programmer",
+  engenheiro: "engineer",
+  analista: "analyst",
+  arquiteto: "architect",
+  sênior: "senior",
+  pleno: "mid-level",
+  júnior: "junior",
+  estagiário: "intern",
+  estágio: "internship",
+  vaga: "",
+  vagas: "",
+};
+
+function translateKeywords(keywords: string): string {
+  let translated = keywords.toLowerCase();
+  for (const [pt, en] of Object.entries(PT_TO_EN)) {
+    translated = translated.replace(new RegExp(`\\b${pt}\\b`, "gi"), en);
+  }
+  return translated.replace(/\s+/g, " ").trim();
+}
+
+async function fetchJoobleJobs(keywords: string, location: string): Promise<JobSearchResult[]> {
+  const apiKey = process.env.JOOBLE_API_KEY;
+  if (!apiKey) return [];
+
+  const joobleLocation = location
+    .replace(/brasil/gi, "Brazil")
+    .replace(/,?\s*remote\s*/gi, "")
+    .trim() || "Brazil";
+
+  const cleanedKeywords = cleanKeywords(keywords);
+  const englishKeywords = translateKeywords(cleanedKeywords);
+
+  const queries = [cleanedKeywords];
+  if (englishKeywords !== cleanedKeywords.toLowerCase()) {
+    queries.push(englishKeywords);
+  }
+
+  const allJobs: JoobleResponse["jobs"] = [];
+
+  for (const q of queries) {
+    for (const page of [1, 2]) {
+      const data = await safeFetchJson<JoobleResponse>(
+        `https://jooble.org/api/${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keywords: q,
+            location: joobleLocation,
+            page,
+          }),
+        }
+      );
+      if (data?.jobs?.length) {
+        allJobs.push(...data.jobs);
+      }
+    }
+  }
+
+  if (allJobs.length === 0) return [];
+
+  const seen = new Set<number>();
+
+  return allJobs
+    .filter((job) => {
+      if (seen.has(job.id)) return false;
+      seen.add(job.id);
+      return BRAZIL_LOCATION.test(job.location || "");
+    })
+    .map((job) => ({
+      title: job.title,
+      company: job.company || "Empresa não informada",
+      location: job.location || "Brasil",
+      description: job.snippet || "",
+      url: job.link,
+      source: JOB_SOURCES.JOOBLE,
+      salary: job.salary || undefined,
+      tags: job.type || undefined,
+      postedAt: job.updated ? new Date(job.updated) : undefined,
+    externalId: String(job.id),
   }));
 }
 
@@ -156,8 +209,7 @@ type FetcherFn = (keywords: string, location: string) => Promise<JobSearchResult
 
 const SOURCE_FETCHERS: Record<JobSourceKey, FetcherFn> = {
   JSEARCH: fetchJSearchJobs,
-  REMOTIVE: fetchRemotiveJobs,
-  ARBEITNOW: fetchArbeitnowJobs,
+  JOOBLE: fetchJoobleJobs,
 };
 
 export async function searchJobs(
